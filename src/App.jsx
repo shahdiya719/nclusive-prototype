@@ -59,8 +59,6 @@ function ConditionCard({ condition, index }) {
 }
 
 export default function App() {
-  const [apiKey, setApiKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
   const [file, setFile] = useState(null);
   const [fileText, setFileText] = useState("");
   const [status, setStatus] = useState("idle");
@@ -70,93 +68,43 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
-  const fetchMedlinePlus = async (icdCode, name) => {
-    try {
-      const params = new URLSearchParams({
-        "mainSearchCriteria.v.cs": "2.16.840.1.113883.6.90",
-        "mainSearchCriteria.v.c": icdCode,
-        "mainSearchCriteria.v.dn": name,
-      });
-      const res = await fetch(`/api/medlineplus?${params}`);
-      if (!res.ok) return null;
-      const data = await res.json();
-      const entry = data?.feed?.entry?.[0];
-      if (!entry) return null;
-      const raw = entry?.summary?.["_value"] || entry?.summary || "";
-      return typeof raw === "string" ? raw.replace(/<[^>]*>/g, "").slice(0, 500) + "..." : null;
-    } catch { return null; }
-  };
-
   const processDocument = useCallback(async () => {
-    if ((!file && !fileText.trim()) || !apiKey.trim()) return;
+    if (!file && !fileText.trim()) return;
     setStatus("extracting");
     setConditions([]);
     setError("");
     setPatientName("");
 
     try {
-      const prompt = `You are a medical coding assistant. Extract all diagnoses and medical conditions from this document. Return ONLY valid JSON with no markdown or extra text:
-{
-  "patientName": "patient name or empty string",
-  "conditions": [
-    {
-      "name": "plain language name a patient would understand",
-      "icdCode": "ICD-10 code e.g. E11.9",
-      "technicalName": "exact medical term from document",
-      "summary": "2-3 sentence plain language explanation of what this condition is and why it matters",
-      "keyPoints": ["point about daily life impact", "what symptoms to watch for", "when to call your doctor"]
-    }
-  ]
-}`;
-
       let body;
-      let headers = { "x-api-key": apiKey };
+      let headers = {};
 
       if (file) {
         const formData = new FormData();
         formData.append("file", file);
-        formData.append("prompt", prompt);
         body = formData;
       } else {
         headers["Content-Type"] = "application/json";
-        body = JSON.stringify({ text: fileText, prompt });
+        body = JSON.stringify({ text: fileText });
       }
 
       const res = await fetch("/api/analyze", { method: "POST", headers, body });
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const data = await res.json();
-
       if (data.error) throw new Error(data.error);
 
-      const rawText = data?.content?.[0]?.text || "";
-      let parsed;
-      try {
-        parsed = JSON.parse(rawText.replace(/```json|```/g, "").trim());
-      } catch {
-        throw new Error("Could not read diagnoses from the document. Try pasting the text directly instead.");
-      }
-
-      if (parsed.patientName) setPatientName(parsed.patientName);
-
-      setStatus("fetching");
-      const enriched = await Promise.all(
-        (parsed.conditions || []).map(async (c) => {
-          const mlSummary = await fetchMedlinePlus(c.icdCode, c.name);
-          return { ...c, summary: mlSummary || c.summary || `${c.name} — see MedlinePlus for more details.` };
-        })
-      );
-
-      setConditions(enriched);
+      if (data.patientName) setPatientName(data.patientName);
+      setConditions(data.conditions || []);
       setStatus("done");
     } catch (e) {
       setError(e.message);
       setStatus("error");
     }
-  }, [file, fileText, apiKey]);
+  }, [file, fileText]);
 
   const reset = () => { setFile(null); setFileText(""); setStatus("idle"); setConditions([]); setError(""); setPatientName(""); };
 
-  const canSubmit = (file || fileText.trim()) && apiKey.trim();
+  const canSubmit = file || fileText.trim();
 
   const statusLabel = { idle: "Ready", extracting: "Extracting...", fetching: "Querying MedlinePlus...", done: "Complete", error: "Error" };
   const statusColor = { idle: { bg: "#E0EFF2", text: DARK }, extracting: { bg: "#FFF3CD", text: "#856404" }, fetching: { bg: "#D1ECF1", text: "#0C5460" }, done: { bg: "#D4EDDA", text: "#155724" }, error: { bg: "#F8D7DA", text: "#721C24" } };
@@ -178,33 +126,12 @@ export default function App() {
 
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "32px 20px" }}>
 
-        {/* ── IDLE: upload form ── */}
         {status === "idle" && (
           <>
             <h1 style={{ fontSize: 26, fontWeight: 700, color: DARK, margin: "0 0 8px" }}>Upload a Discharge Document</h1>
             <p style={{ fontSize: 14, color: "#64748B", margin: "0 0 28px", lineHeight: 1.6 }}>
-              Upload a VA discharge summary or paste the text. Nclusive extracts diagnoses, looks them up in NIH MedlinePlus, and generates a plain-language patient summary with a scannable QR code for each condition.
+              Upload a VA discharge summary or paste the text below. Nclusive extracts diagnoses, looks them up in NIH MedlinePlus, and generates a plain-language patient summary with a scannable QR code for each condition.
             </p>
-
-            {/* API Key */}
-            <div style={{ marginBottom: 24, background: "#fff", border: "1px solid #E0EFF2", borderRadius: 12, padding: "18px 20px" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: DARK, marginBottom: 8 }}>🔑 Anthropic API Key</div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                <input
-                  type={showKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-ant-api..."
-                  style={{ flex: 1, padding: "10px 14px", border: `1px solid ${apiKey ? SEAFOAM : "#D0E8EC"}`, borderRadius: 8, fontSize: 13, fontFamily: "monospace", color: DARK, outline: "none", background: "#FAFEFF" }}
-                />
-                <button onClick={() => setShowKey(!showKey)} style={{ padding: "10px 14px", border: "1px solid #D0E8EC", borderRadius: 8, background: "#fff", cursor: "pointer", fontSize: 12, color: "#64748B" }}>
-                  {showKey ? "Hide" : "Show"}
-                </button>
-              </div>
-              <div style={{ fontSize: 11, color: "#94A3B8" }}>
-                Get your key at <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" style={{ color: TEAL }}>console.anthropic.com</a> · Your key is never stored or sent anywhere except the Anthropic API.
-              </div>
-            </div>
 
             {/* Drop zone */}
             <div
@@ -246,12 +173,10 @@ export default function App() {
               Extract Diagnoses & Generate Patient Summary →
             </button>
 
-            {!apiKey && <div style={{ marginTop: 10, fontSize: 12, color: "#E24B4A", textAlign: "center" }}>⚠ Enter your Anthropic API key above to continue</div>}
             <div style={{ marginTop: 8, fontSize: 12, color: "#94A3B8", textAlign: "center" }}>Doctor's original language is never modified. Plain-language explanations sourced from NIH MedlinePlus.</div>
           </>
         )}
 
-        {/* ── LOADING ── */}
         {(status === "extracting" || status === "fetching") && (
           <div style={{ textAlign: "center", padding: "80px 20px" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>{status === "extracting" ? "🔍" : "📡"}</div>
@@ -264,7 +189,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ── ERROR ── */}
         {status === "error" && (
           <div style={{ background: "#FEE2E2", border: "1px solid #FECACA", borderRadius: 10, padding: 20 }}>
             <div style={{ fontWeight: 700, color: "#991B1B", marginBottom: 6 }}>Something went wrong</div>
@@ -273,7 +197,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ── RESULTS ── */}
         {status === "done" && conditions.length > 0 && (
           <>
             <div style={{ background: DARK, borderRadius: 12, padding: "20px 24px", marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center" }}>

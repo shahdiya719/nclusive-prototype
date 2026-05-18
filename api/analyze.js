@@ -92,8 +92,8 @@ module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const apiKey = req.headers["x-api-key"];
-    if (!apiKey) return res.status(400).json({ error: "No API key provided" });
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: "API key not configured" });
 
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: "No text provided" });
