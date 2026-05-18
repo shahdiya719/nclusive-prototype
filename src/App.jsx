@@ -77,7 +77,7 @@ export default function App() {
         "mainSearchCriteria.v.c": icdCode,
         "mainSearchCriteria.v.dn": name,
       });
-      const res = await fetch(`http://localhost:3001/api/medlineplus?${params}`);
+      const res = await fetch(`/api/medlineplus?${params}`);
       if (!res.ok) return null;
       const data = await res.json();
       const entry = data?.feed?.entry?.[0];
@@ -122,7 +122,7 @@ export default function App() {
         body = JSON.stringify({ text: fileText, prompt });
       }
 
-      const res = await fetch("http://localhost:3001/api/analyze", { method: "POST", headers, body });
+      const res = await fetch("/api/analyze", { method: "POST", headers, body });
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const data = await res.json();
 
