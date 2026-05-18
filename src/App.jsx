@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 
-const TEAL = "#028090";
+const TEAL = "#028090"; // v3
 const DARK = "#01424A";
 const SEAFOAM = "#02C39A";
 
